@@ -20,8 +20,6 @@ const awsRegion = 'us-east-2';
 const s3 = new awsSdk3.S3Client({ region: awsRegion });
 const s3v2 = new awsSdk3.S3({ region: awsRegion });
 
-awsSdk3.PutObjectCommand;
-
 const availableOperations = [
   'createBucket',
   'listBuckets',
