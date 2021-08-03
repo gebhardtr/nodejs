@@ -11,7 +11,6 @@ const fetch = require('node-fetch');
 const awsSdk3 = require('@aws-sdk/client-sqs');
 const logPrefix = `AWS SDK v3 SQS Receiver (${process.pid}):\t`;
 const log = require('@instana/core/test/test_util/log').getLogger(logPrefix);
-// const delay = require('../../../../../../../core/test/test_util/delay');
 const delay = require('@instana/core/test/test_util/delay');
 const { sendToParent } = require('../../../../../../../core/test/test_util');
 const port = process.env.APP_PORT || 3216;
@@ -21,13 +20,9 @@ const queueURL = process.env.AWS_SQS_QUEUE_URL;
 const awsRegion = 'us-east-2';
 
 const sqs = new awsSdk3.SQSClient({ region: awsRegion });
-// const sqsv2 = new awsSdk3.SQS({ region: awsRegion });
+const sqsv2 = new awsSdk3.SQS({ region: awsRegion });
 
 let hasStartedPolling = false;
-
-// const operationParams = {
-//   QueueUrl: queueURL
-// };
 
 const receiveParams = {
   AttributeNames: ['SentTimestamp'],
@@ -47,11 +42,11 @@ app.get('/', (_req, res) => {
   }
 });
 
-async function runV3AsPromise() {
+async function runAsPromise(isV2Style = false) {
   const command = new awsSdk3.ReceiveMessageCommand(receiveParams);
+  const promise = isV2Style ? sqsv2.receiveMessage(receiveParams) : sqs.send(command);
 
-  return sqs
-    .send(command)
+  return promise
     .then(data => {
       if (data && data.error) {
         log('receive message data error', data.error);
@@ -98,6 +93,60 @@ async function runV3AsPromise() {
     });
 }
 
+async function runV3AsCallback(cb) {
+  const command = new awsSdk3.ReceiveMessageCommand(receiveParams);
+
+  sqs.send(command, (err, data) => {
+    if (err) {
+      cb(err);
+    }
+
+    if (data && data.error) {
+      cb(data.error);
+      return;
+    } else if (!data || !data.Messages || data.Messages.length === 0) {
+      log('No messages, doing nothing');
+      cb();
+      return;
+    }
+
+    data.Messages.forEach(message => {
+      sendToParent(message);
+    });
+
+    log(
+      'got messages:',
+      data.Messages.map(m => m.MessageId)
+    );
+
+    const messagesForDeletion = data.Messages.map(message => {
+      return {
+        Id: message.MessageId,
+        ReceiptHandle: message.ReceiptHandle
+      };
+    });
+
+    const deletionCommand = new awsSdk3.DeleteMessageBatchCommand({
+      QueueUrl: queueURL,
+      Entries: messagesForDeletion
+    });
+
+    sqs.send(deletionCommand, () => {
+      setTimeout(async () => {
+        try {
+          await fetch(`http://127.0.0.1:${agentPort}`);
+          setTimeout(() => {
+            log('The follow up request after receiving a message has happened.');
+            cb();
+          }, 1000);
+        } catch (err2) {
+          cb(err2);
+        }
+      }, 200);
+    });
+  });
+}
+
 async function pollForMessages() {
   const method = process.env.SQSV3_RECEIVE_METHOD || 'v3';
 
@@ -106,43 +155,36 @@ async function pollForMessages() {
   switch (method) {
     case 'v3':
       try {
-        await runV3AsPromise();
+        await runAsPromise();
         setImmediate(pollForMessages);
       } catch (err) {
         log('error', err);
         // eslint-disable-next-line
-        console.error(e);
+        process.exit(1);
+      }
+      break;
+    case 'cb':
+      runV3AsCallback(err => {
+        setImmediate(pollForMessages);
+
+        if (err) {
+          log('error', err);
+        }
+      });
+      break;
+    case 'v2':
+      try {
+        await runAsPromise(true);
+        setImmediate(pollForMessages);
+      } catch (err) {
+        log('error', err);
+        // eslint-disable-next-line
         process.exit(1);
       }
       break;
     default:
+      log(`End with command ${method}`);
   }
-
-  // if (receivedType === 'v3') {
-  //   try {
-  //     await receivePromise();
-  //   } catch (e) {
-  //     // eslint-disable-next-line
-  //     console.error(e);
-  //     process.exit(1);
-  //   }
-  //   setImmediate(pollForMessages);
-  // } else if (receivedType === 'cb') {
-  //   receiveCallback(() => {
-  //     setImmediate(pollForMessages);
-  //   });
-  // } else if (receivedType === 'v2') {
-  //   try {
-  //     await receiveAsync();
-  //   } catch (e) {
-  //     // eslint-disable-next-line
-  //     console.error(e);
-  //     process.exit(1);
-  //   }
-  //   setImmediate(pollForMessages);
-  // } else {
-  //   log(`End with command ${receivedType}`);
-  // }
 }
 
 async function startPollingWhenReady() {
