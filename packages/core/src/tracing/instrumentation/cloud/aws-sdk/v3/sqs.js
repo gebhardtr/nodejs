@@ -50,27 +50,15 @@ class InstanaAWSSQS extends InstanaAWSProduct {
   instrumentExit(ctx, originalInnerLoggerMiddleware, originalInnerFuncArgs, originalParentFuncArgs, operation) {
     const sendMessageInput = originalInnerFuncArgs[0].input;
 
-    // if (sendMessageInput.MessageAttributes == null) {
-    //   sendMessageInput.MessageAttributes = {};
-    // }
-
     /**
      * Send Message Attribues format
-     * {
-     *    ...
-     *    MessageAttributes: {
-     *      CustomAttribute: {
-     *        DataType: 'String',
-     *        StringValue: 'Custom Value'
-     *      }
+     *  MessageAttributes: {
+     *    CustomAttribute: {
+     *      DataType: 'String',
+     *      StringValue: 'Custom Value'
      *    }
-     * }
+     *  }
      */
-    // const messageBody = sendMessageInput.MessageBody;
-
-    // if (!sendMessageInput || !messageBody) {
-    //   return originalInnerLoggerMiddleware.apply(ctx, originalInnerFuncArgs);
-    // }
 
     let attributes;
     const isBatch = sendMessageInput.Entries && sendMessageInput.Entries.length > 0;
@@ -108,16 +96,10 @@ class InstanaAWSSQS extends InstanaAWSProduct {
     }
 
     return cls.ns.runAndReturn(() => {
-      const span = cls.startSpan('sqs', EXIT);
+      const span = cls.startSpan(SPAN_NAME, EXIT);
       span.ts = Date.now();
-      span.stack = tracingUtil.getStackTrace(this.instrumentExit);
-      span.data.sqs = {
-        sort: operation.sort,
-        type: operation.type,
-        // This parameter applies only to FIFO (first-in-first-out) queues.
-        group: sendMessageInput.MessageGroupId,
-        queue: sendMessageInput.QueueUrl
-      };
+      span.stack = tracingUtil.getStackTrace(this.instrumentExit, 2);
+      span.data.sqs = this.buildSpanData(operation, sendMessageInput);
 
       if (isBatch) {
         span.data.sqs.size = sendMessageInput.Entries.length;
@@ -128,69 +110,36 @@ class InstanaAWSSQS extends InstanaAWSProduct {
         this.propagateTraceContext(attributes, span);
       }
 
-      // const request = originalInnerLoggerMiddleware.apply(ctx, originalInnerFuncArgs);
       const request = originalInnerLoggerMiddleware.apply(ctx, originalInnerFuncArgs);
 
       request
         .then(data => {
-          console.log('EH MTO SUCESSO CARA');
-          this.finishSpan(null, span);
+          if (data && data.error) {
+            this.finishSpan(data.error, span);
+          } else {
+            this.finishSpan(null, span);
+          }
         })
         .catch(err => {
-          console.log('VEIO AKI', err, span);
           this.finishSpan(err, span);
         });
 
       return request;
-
-      //    const originalCallback = originalArgs[1];
-      //    if (typeof originalCallback === 'function') {
-      //      originalArgs[1] = cls.ns.bind(function (err, data) {
-      //        finishSpan(err, data, span);
-      //        originalCallback.apply(this, arguments);
-      //      });
-      //    }
-      //    const awsRequest = originalSendMessage.apply(ctx, originalArgs);
-      //    if (typeof awsRequest.promise === 'function') {
-      //      awsRequest.promise = cls.ns.bind(awsRequest.promise);
-      //    }
-      //    // this is what the promise actually does
-      //    awsRequest.on('complete', function onComplete(data) {
-      //      if (data && data.error) {
-      //        finishSpan(data.error, null, span);
-      //        throw data.error;
-      //      } else {
-      //        finishSpan(null, data, span);
-      //        return data;
-      //      }
-      //    });
-      //    return awsRequest;
-      // return originalInnerLoggerMiddleware.apply(ctx, originalInnerFuncArgs);
     });
-
-    // return originalInnerLoggerMiddleware.apply(ctx, originalInnerFuncArgs);
   }
 
   instrumentEntry(ctx, originalInnerLoggerMiddleware, originalInnerFuncArgs, originalParentFuncArgs) {
-    // console.log('hai, entry span', originalParentFuncArgs[1].commandName);
     return originalInnerLoggerMiddleware.apply(ctx, originalInnerFuncArgs);
   }
 
-  buildSpanData(operation, params) {
-    const methodInfo = operationsInfo[operation];
-    const s3Data = {
-      op: methodInfo.op
+  buildSpanData(operation, sendMessageInput) {
+    return {
+      sort: operation.sort,
+      type: operation.type,
+      // This parameter applies only to FIFO (first-in-first-out) queues.
+      group: sendMessageInput.MessageGroupId,
+      queue: sendMessageInput.QueueUrl
     };
-
-    if (params && params.Bucket) {
-      s3Data.bucket = params.Bucket;
-    }
-
-    if (methodInfo.hasKey) {
-      s3Data.key = params.Key;
-    }
-
-    return s3Data;
   }
 
   propagateSuppression(attributes) {
