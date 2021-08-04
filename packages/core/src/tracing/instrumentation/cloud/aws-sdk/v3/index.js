@@ -13,7 +13,8 @@ const { getFunctionArguments } = require('../../../../../util/function_arguments
 const awsProducts = [
   //
   require('./dynamodb'),
-  require('./s3')
+  require('./s3'),
+  require('./sqs')
 ];
 
 /** @type {Object.<string, import('./instana_aws_product').InstanaAWSProduct} */

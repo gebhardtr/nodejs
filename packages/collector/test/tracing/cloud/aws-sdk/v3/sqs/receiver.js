@@ -5,7 +5,7 @@
 
 'use strict';
 
-// require('../../../../../../')();
+require('../../../../../../')();
 const express = require('express');
 const fetch = require('node-fetch');
 const awsSdk3 = require('@aws-sdk/client-sqs');
