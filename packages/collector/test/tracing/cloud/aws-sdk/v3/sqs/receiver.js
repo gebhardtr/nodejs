@@ -160,7 +160,6 @@ async function pollForMessages() {
         setImmediate(pollForMessages);
       } catch (err) {
         log('error', err);
-        // eslint-disable-next-line
         process.exit(1);
       }
       break;
@@ -179,7 +178,6 @@ async function pollForMessages() {
         setImmediate(pollForMessages);
       } catch (err) {
         log('error', err);
-        // eslint-disable-next-line
         process.exit(1);
       }
       break;
