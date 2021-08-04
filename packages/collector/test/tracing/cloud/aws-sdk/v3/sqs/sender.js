@@ -16,9 +16,12 @@ const agentPort = process.env.INSTANA_AGENT_PORT || 42699;
 const app = express();
 const queueURL = process.env.AWS_SQS_QUEUE_URL;
 const awsRegion = 'us-east-2';
-
 const sqs = new awsSdk3.SQSClient({ region: awsRegion });
 const sqsv2 = new awsSdk3.SQS({ region: awsRegion });
+
+app.get('/', (_req, res) => {
+  res.send('Ok');
+});
 
 const operationParams = {
   QueueUrl: queueURL

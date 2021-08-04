@@ -5,7 +5,7 @@
 
 'use strict';
 
-require('../../../../../../')();
+const instana = require('../../../../../../')();
 const express = require('express');
 const fetch = require('node-fetch');
 const awsSdk3 = require('@aws-sdk/client-sqs');
@@ -15,6 +15,7 @@ const delay = require('@instana/core/test/test_util/delay');
 const { sendToParent } = require('../../../../../../../core/test/test_util');
 const port = process.env.APP_PORT || 3216;
 const agentPort = process.env.INSTANA_AGENT_PORT || 42699;
+const sqsV3ReceiveMethod = process.env.SQSV3_RECEIVE_METHOD || 'v3';
 const app = express();
 const queueURL = process.env.AWS_SQS_QUEUE_URL;
 const awsRegion = 'us-east-2';
@@ -148,7 +149,7 @@ async function runV3AsCallback(cb) {
 }
 
 async function pollForMessages() {
-  const method = process.env.SQSV3_RECEIVE_METHOD || 'v3';
+  const method = sqsV3ReceiveMethod;
 
   log(`Polling SQS (type "${method}")`);
 
@@ -189,13 +190,13 @@ async function pollForMessages() {
 
 async function startPollingWhenReady() {
   // Make sure we are connected to the agent before calling sqs.receiveMessage for the first time.
-  // if (instana.isConnected()) {
-  pollForMessages();
-  hasStartedPolling = true;
-  // } else {
-  //   await delay(50);
-  //   setImmediate(startPollingWhenReady);
-  // }
+  if (instana.isConnected()) {
+    pollForMessages();
+    hasStartedPolling = true;
+  } else {
+    await delay(50);
+    setImmediate(startPollingWhenReady);
+  }
 }
 
 startPollingWhenReady();
